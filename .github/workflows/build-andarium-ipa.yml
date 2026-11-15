@@ -43,7 +43,7 @@ jobs:
           gh release download 1.0b9-beta --repo imxieyi/Kernarium --pattern 'lineage24-mainline6.18-4k-20261110-los24-r22.tar.gz' --dir .build/android-download
           tar -xzf .build/android-download/android-6.18-arm64-4k-20261111-6.18.60-mc2.tar.gz -C .build/kernel/artifacts
           tar -xzf .build/android-download/lineage24-mainline6.18-4k-20261110-los24-r22.tar.gz -C .build/android-download
-          python3 android/lineage-24/tools/install-release.py --source .build/android-download/lineage24-mainline6.18-4k-20261110-los24-r22
+          python3 android/lineage-24/tools/install-release.py --source "$GITHUB_WORKSPACE/.build/android-download/lineage24-mainline6.18-4k-20261110-los24-r22"
           rm .build/android-download/*.tar.gz
       - name: Build Android runtime and stage system
         run: |
