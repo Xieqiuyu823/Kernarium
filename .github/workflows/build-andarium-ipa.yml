@@ -1,0 +1,71 @@
+name: Build Andarium unsigned IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check toolchain and install build tools
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcodebuild -showsdks
+          brew install cmake ninja meson autoconf automake gettext libtool gperf groff pkg-config
+          mkdir -p .build
+          python3 -m venv .build/gpu-tools-venv
+          .build/gpu-tools-venv/bin/pip install meson mako pyyaml packaging
+          git config --global user.name 'Andarium build'
+          git config --global user.email 'build@users.noreply.github.com'
+      - name: Prepare dependency sources
+        run: |
+          set -euo pipefail
+          for product in apple-gpu-vulkan-experiment ios-network ios-storage ios-compression; do
+            dependencies/prepare.sh --product "$product"
+          done
+      - name: Compile iOS dependencies
+        run: |
+          set -euo pipefail
+          dependencies/build-apple-gpu.sh --platform ios
+          dependencies/build-ios-network.sh --platform ios
+          dependencies/build-ios-storage.sh
+          dependencies/build-ios-zstd.sh
+      - name: Install official Android and kernel artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .build/kernel/artifacts .build/android-download
+          gh release download 1.0b9-beta --repo imxieyi/Kernarium --pattern 'android-6.18-arm64-4k-20261111-6.18.60-mc2.tar.gz' --dir .build/android-download
+          gh release download 1.0b9-beta --repo imxieyi/Kernarium --pattern 'lineage24-mainline6.18-4k-20261110-los24-r22.tar.gz' --dir .build/android-download
+          tar -xzf .build/android-download/android-6.18-arm64-4k-20261111-6.18.60-mc2.tar.gz -C .build/kernel/artifacts
+          tar -xzf .build/android-download/lineage24-mainline6.18-4k-20261110-los24-r22.tar.gz -C .build/android-download
+          python3 android/lineage-24/tools/install-release.py --source .build/android-download/lineage24-mainline6.18-4k-20261110-los24-r22
+          rm .build/android-download/*.tar.gz
+      - name: Build Android runtime and stage system
+        run: |
+          set -euo pipefail
+          cmake --preset kernarium-ios-device-android
+          cmake --build --preset kernarium-ios-device-android
+          Kernarium/scripts/package-ios-frameworks.sh --runtimes android
+          python3 Andarium/scripts/stage-system-image.py
+      - name: Build unsigned IPA
+        run: |
+          set -euo pipefail
+          xcodebuild -project Andarium/Andarium.xcodeproj -scheme Andarium -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/andarium-derived" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/andarium-derived/Build/Products/Release-iphoneos/Andarium.app" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/Andarium-unsigned.ipa" Payload)
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Andarium-unsigned
+          path: Andarium-unsigned.ipa
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
