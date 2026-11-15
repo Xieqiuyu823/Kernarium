@@ -1,0 +1,38 @@
+name: Publish Andarium IPA
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publish-andarium-ipa.yml]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download compiled IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: Andarium-unsigned
+          run-id: 43681163678
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha256sum Andarium-unsigned.ipa > SHA256SUMS
+          cat > notes.md <<'NOTES'
+          Andarium 未签名测试版，使用官方 Android 系统镜像和内核构建。
+
+          - 安装前需要自行签名，签名配置必须支持 Increased Memory Limit 和 Extended Virtual Addressing 权限。
+          - 需要 iOS/iPadOS 27 或以上，以及 A14 或更新芯片。
+          - 尚未进行真机验证；此构建与 TestFlight 版本的签名和配置不同。
+          - 构建记录：https://github.com/Xieqiuyu823/Kernarium/actions/runs/43681163678
+          NOTES
+          gh release create andarium-unsigned-20261115 Andarium-unsigned.ipa SHA256SUMS \
+            --target d2c5e01d26235a9c3474a24ff0e79ebde2d8a0fe \
+            --title 'Andarium 未签名测试版' --notes-file notes.md --prerelease
